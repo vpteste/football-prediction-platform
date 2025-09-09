@@ -1,6 +1,6 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import accuracy_score
 import joblib
 from collections import deque
@@ -10,73 +10,104 @@ def load_data(filepath="historical_data.csv"):
     """Charge et prépare les données initiales."""
     try:
         df = pd.read_csv(filepath)
-        # Convertir la date en objet datetime et trier
         df['date'] = pd.to_datetime(df['date'])
-        df = df.sort_values('date')
+        df = df.sort_values('date').reset_index(drop=True)
         return df
     except FileNotFoundError:
         print(f"Erreur: Le fichier {filepath} n'a pas été trouvé.")
         return None
 
-# --- 2. Feature Engineering Avancé ---
+# --- 2. Feature Engineering Super Avancé ---
 def create_advanced_features(df):
-    """Crée des caractéristiques basées sur la forme récente des équipes."""
-    print("Début du Feature Engineering avancé...")
+    """Crée des caractéristiques basées sur la forme, les H2H et les différentiels."""
+    print("Début du Feature Engineering Super Avancé...")
     
-    # Calculer le résultat du match pour la variable cible
     df["result"] = df.apply(lambda row: "H" if row["home_goals"] > row["away_goals"] else ("A" if row["away_goals"] > row["home_goals"] else "D"), axis=1)
 
-    # Dictionnaire pour garder en mémoire la forme récente de chaque équipe
     team_stats = {}
+    h2h_stats = {}
     
-    # Nouvelles colonnes pour les features, initialisées à 0
-    new_features = [
-        'home_form_pts', 'home_form_gs', 'home_form_ga', 'home_form_gd',
-        'away_form_pts', 'away_form_gs', 'away_form_ga', 'away_form_gd'
+    # Initialisation des colonnes de features
+    form_features = [
+        'home_form_pts', 'home_form_gs', 'home_form_ga',
+        'away_form_pts', 'away_form_gs', 'away_form_ga'
     ]
-    for col in new_features:
+    h2h_features = ['h2h_home_wins', 'h2h_draws', 'h2h_away_wins']
+    for col in form_features + h2h_features:
         df[col] = 0.0
 
-    # Itérer sur chaque match dans l'ordre chronologique
+    # Itération chronologique pour construire les features
     for index, row in df.iterrows():
-        home_team = row['home_team']
-        away_team = row['away_team']
+        home_team, away_team = row['home_team'], row['away_team']
 
-        # Initialiser les stats pour les nouvelles équipes
+        # --- 2.1 Calcul de la forme (comme avant) ---
         if home_team not in team_stats: team_stats[home_team] = deque(maxlen=5)
         if away_team not in team_stats: team_stats[away_team] = deque(maxlen=5)
 
-        # Assigner les stats actuelles (avant ce match) au match courant
         if len(team_stats[home_team]) > 0:
-            home_stats = pd.DataFrame(list(team_stats[home_team]))
-            df.loc[index, 'home_form_pts'] = home_stats['pts'].mean()
-            df.loc[index, 'home_form_gs'] = home_stats['gs'].mean()
-            df.loc[index, 'home_form_ga'] = home_stats['ga'].mean()
-            df.loc[index, 'home_form_gd'] = home_stats['gd'].mean()
+            home_form = pd.DataFrame(list(team_stats[home_team]))
+            df.loc[index, 'home_form_pts'] = home_form['pts'].mean()
+            df.loc[index, 'home_form_gs'] = home_form['gs'].mean()
+            df.loc[index, 'home_form_ga'] = home_form['ga'].mean()
 
         if len(team_stats[away_team]) > 0:
-            away_stats = pd.DataFrame(list(team_stats[away_team]))
-            df.loc[index, 'away_form_pts'] = away_stats['pts'].mean()
-            df.loc[index, 'away_form_gs'] = away_stats['gs'].mean()
-            df.loc[index, 'away_form_ga'] = away_stats['ga'].mean()
-            df.loc[index, 'away_form_gd'] = away_stats['gd'].mean()
+            away_form = pd.DataFrame(list(team_stats[away_team]))
+            df.loc[index, 'away_form_pts'] = away_form['pts'].mean()
+            df.loc[index, 'away_form_gs'] = away_form['gs'].mean()
+            df.loc[index, 'away_form_ga'] = away_form['ga'].mean()
 
-        # Mettre à jour les stats avec le résultat de ce match
+        # --- 2.2 Calcul du Head-to-Head (H2H) ---
+        h2h_key = tuple(sorted((home_team, away_team)))
+        if h2h_key not in h2h_stats: h2h_stats[h2h_key] = deque(maxlen=5)
+        
+        if len(h2h_stats[h2h_key]) > 0:
+            h2h_results = list(h2h_stats[h2h_key])
+            wins_for_key_0 = h2h_results.count('W')
+            draws = h2h_results.count('D')
+            
+            if home_team == h2h_key[0]:
+                df.loc[index, 'h2h_home_wins'] = wins_for_key_0
+                df.loc[index, 'h2h_draws'] = draws
+                df.loc[index, 'h2h_away_wins'] = len(h2h_results) - wins_for_key_0 - draws
+            else: # home_team is h2h_key[1]
+                df.loc[index, 'h2h_away_wins'] = wins_for_key_0
+                df.loc[index, 'h2h_draws'] = draws
+                df.loc[index, 'h2h_home_wins'] = len(h2h_results) - wins_for_key_0 - draws
+
+        # --- 2.3 Mise à jour des stats pour le prochain match ---
         home_pts = 3 if row['result'] == 'H' else (1 if row['result'] == 'D' else 0)
         away_pts = 3 if row['result'] == 'A' else (1 if row['result'] == 'D' else 0)
-        team_stats[home_team].append({'pts': home_pts, 'gs': row['home_goals'], 'ga': row['away_goals'], 'gd': row['home_goals'] - row['away_goals']})
-        team_stats[away_team].append({'pts': away_pts, 'gs': row['away_goals'], 'ga': row['home_goals'], 'gd': row['away_goals'] - row['home_goals']})
+        team_stats[home_team].append({'pts': home_pts, 'gs': row['home_goals'], 'ga': row['away_goals']})
+        team_stats[away_team].append({'pts': away_pts, 'gs': row['away_goals'], 'ga': row['home_goals']})
+        
+        if row['result'] == 'D':
+            h2h_stats[h2h_key].append('D')
+        elif (row['result'] == 'H' and home_team == h2h_key[0]) or (row['result'] == 'A' and away_team == h2h_key[0]):
+            h2h_stats[h2h_key].append('W') # Victoire pour la première équipe de la clé
+        else:
+            h2h_stats[h2h_key].append('L') # Défaite pour la première équipe de la clé
 
-    # Supprimer les matchs où il n'y avait pas assez d'historique
-    df = df[df['home_form_pts'].notna() & df['away_form_pts'].notna()] # En pratique, on a initialisé à 0 donc pas de NA
-    df = df.dropna(subset=new_features)
+    # --- 2.4 Création des features différentielles ---
+    df['home_form_gd'] = df['home_form_gs'] - df['home_form_ga']
+    df['away_form_gd'] = df['away_form_gs'] - df['away_form_ga']
+    df['diff_form_pts'] = df['home_form_pts'] - df['away_form_pts']
+    df['diff_form_gs'] = df['home_form_gs'] - df['away_form_gs']
+    df['diff_form_ga'] = df['home_form_ga'] - df['away_form_ga']
+    df['diff_form_gd'] = df['home_form_gd'] - df['away_form_gd']
+    
+    # On retire les features H2H qui ne sont pas disponibles à la prédiction
+    final_features = ['diff_form_pts', 'diff_form_gs', 'diff_form_ga', 'diff_form_gd']
+
+    # Supprimer les matchs où il n'y avait pas assez d'historique (au moins un match de forme)
+    df = df[df['home_form_pts'] > 0]
+    df = df.dropna(subset=final_features)
 
     print("Feature Engineering terminé.")
-    return df, new_features
+    return df, final_features
 
 # --- 3. Entraînement et Évaluation ---
 def train_and_evaluate(df, feature_cols):
-    """Divise les données, entraîne et évalue le modèle."""
+    """Divise les données, entraîne et évalue le modèle Gradient Boosting."""
     if df.empty:
         print("Le DataFrame est vide après le feature engineering, impossible d'entraîner.")
         return None
@@ -89,8 +120,10 @@ def train_and_evaluate(df, feature_cols):
     print(f"Taille de l'ensemble d'entraînement: {len(X_train)} matchs")
     print(f"Taille de l'ensemble de test: {len(X_test)} matchs")
 
-    model = LogisticRegression(max_iter=1000)
-    print("\nEntraînement du modèle...")
+    # Utilisation d'un modèle plus puissant
+    model = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42)
+    
+    print("\nEntraînement du modèle Gradient Boosting...")
     model.fit(X_train, y_train)
     print("Modèle entraîné.")
 
@@ -112,12 +145,11 @@ def save_model(model, columns):
 
 # --- Script principal ---
 if __name__ == "__main__":
-    print("--- Début du processus d'entraînement avec Features Avancées ---")
+    print("--- Début du processus d'entraînement avec Features Super Avancées ---")
     df = load_data()
     if df is not None:
         df_featured, feature_cols = create_advanced_features(df)
         trained_model = train_and_evaluate(df_featured, feature_cols)
         if trained_model:
-            # Si l'entraînement a réussi, on sauvegarde le nouveau modèle
             save_model(trained_model, feature_cols)
     print("\n--- Fin du processus d'entraînement ---")

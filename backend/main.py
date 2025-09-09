@@ -24,66 +24,79 @@ except FileNotFoundError:
     print("Erreur critique: Un ou plusieurs fichiers sont manquants.")
     model, model_columns, feature_cache = None, None, None
 
-# --- Configuration des APIs ---
-FD_API_KEY = os.getenv("FOOTBALL_DATA_API_KEY")
-FD_HEADERS = {"X-Auth-Token": FD_API_KEY}
-
-AF_API_KEY = os.getenv("API_FOOTBALL_KEY")
-AF_HEADERS = {"x-apisports-key": AF_API_KEY}
-
+# --- Configuration ---
 RESULT_MAPPING = {"H": "Victoire à domicile", "D": "Match nul", "A": "Victoire à l'extérieur"}
 
-def fetch_from_api_football():
-    """Source de données secondaire : api-football.com"""
-    print("Fallback: Tentative de récupération via api-football.com")
-    if not AF_API_KEY:
-        print("Clé API pour api-football.com non trouvée.")
+def fetch_matches_via_espn_api():
+    """Récupère les matchs à venir en utilisant l'API interne d'ESPN."""
+    print("Lancement du Scraper API pour récupérer les matchs à venir...")
+    matches = []
+    try:
+        # On récupère les matchs pour les 7 prochains jours
+        date_to = (datetime.now() + timedelta(days=7)).strftime('%Y%m%d')
+        url = f"https://site.api.espn.com/apis/v2/scores/soccer/all/scoreboard/dates/{datetime.now().strftime('%Y%m%d')}-{date_to}"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+        for event in data.get('events', []):
+            competition_data = event.get('competitions', [{}])[0]
+            competition_name = competition_data.get('name', 'Compétition Inconnue')
+            
+            full_event_name = event.get('name', '')
+            teams = full_event_name.split(' vs ')
+            if len(teams) != 2:
+                continue
+            home_team, away_team = teams
+
+            standardized_match = {
+                "id": event.get('id'),
+                "utcDate": event.get('date'),
+                "competition": {'name': competition_name},
+                "homeTeam": {'name': home_team},
+                "awayTeam": {'name': away_team}
+            }
+            matches.append(standardized_match)
+
+    except Exception as e:
+        print(f"Erreur lors du scraping de l'API d'ESPN: {e}")
         return []
 
-    url = "https://v3.football.api-sports.io/fixtures"
-    # Correspondance approximative des ligues majeures
-    league_ids = [39, 61, 78, 135, 140, 2] # PL, Ligue 1, Bundesliga, Serie A, La Liga, Champions League
-    all_matches_standardized = []
-
-    for league_id in league_ids:
-        try:
-            params = {"league": league_id, "season": datetime.now().year - 1, "status": "NS"} # NS = Not Started
-            response = requests.get(url, headers=AF_HEADERS, params=params)
-            response.raise_for_status()
-            api_response = response.json()['response']
-
-            for fix in api_response:
-                standardized_match = {
-                    "id": fix['fixture']['id'],
-                    "utcDate": fix['fixture']['date'],
-                    "competition": {'name': fix['league']['name']},
-                    "homeTeam": {'name': fix['teams']['home']['name']},
-                    "awayTeam": {'name': fix['teams']['away']['name']}
-                }
-                all_matches_standardized.append(standardized_match)
-        except Exception as e:
-            print(f"Erreur avec api-football pour la ligue {league_id}: {e}")
-            continue
-    
-    print(f"{len(all_matches_standardized)} matchs trouvés via api-football.com")
-    return all_matches_standardized
+    print(f"{len(matches)} matchs trouvés via l'API d'ESPN.")
+    return matches
 
 def make_prediction(match):
-    # ... (La fonction make_prediction reste la même)
+    """Génère une prédiction pour un seul match."""
     home_team_name = match.get('homeTeam', {}).get('name')
     away_team_name = match.get('awayTeam', {}).get('name')
     if not home_team_name or not away_team_name: return None
+
+    # Utiliser une table de correspondance si nécessaire (à créer)
+    # home_team_name = TEAM_NAME_MAP.get(home_team_name, home_team_name)
+    # away_team_name = TEAM_NAME_MAP.get(away_team_name, away_team_name)
+
     home_features = feature_cache.get(home_team_name)
     away_features = feature_cache.get(away_team_name)
-    if not home_features or not away_features: return None
-    input_data = { 'home_form_pts': home_features['pts'], 'home_form_gs': home_features['gs'],
-                   'home_form_ga': home_features['ga'], 'home_form_gd': home_features['gd'],
-                   'away_form_pts': away_features['pts'], 'away_form_gs': away_features['gs'],
-                   'away_form_ga': away_features['ga'], 'away_form_gd': away_features['gd'] }
+    if not home_features or not away_features:
+        print(f"Features non trouvées pour: '{home_team_name}' ou '{away_team_name}'")
+        return None
+
+    # Création des features différentielles comme pour l'entraînement
+    input_data = {
+        'diff_form_pts': home_features.get('pts', 0) - away_features.get('pts', 0),
+        'diff_form_gs': home_features.get('gs', 0) - away_features.get('gs', 0),
+        'diff_form_ga': home_features.get('ga', 0) - away_features.get('ga', 0),
+        'diff_form_gd': home_features.get('gd', 0) - away_features.get('gd', 0)
+    }
     input_df = pd.DataFrame([input_data], columns=model_columns)
+
     prediction_result = model.predict(input_df)[0]
     prediction_proba = model.predict_proba(input_df)[0]
     confidence = max(prediction_proba)
+
     return {
         "id": match.get('id'), "match": f'{home_team_name} vs {away_team_name}',
         "prediction": RESULT_MAPPING.get(prediction_result, "Inconnu"),
@@ -96,27 +109,8 @@ def get_predictions():
     if not all([model, model_columns, feature_cache]):
         return {"error": "Modèle ou cache non chargé."}
 
-    matches = []
-    try:
-        # 1. Essayer la source primaire : football-data.org
-        print("Tentative de récupération via football-data.org")
-        date_from = datetime.now().strftime('%Y-%m-%d')
-        date_to = (datetime.now() + timedelta(days=4)).strftime('%Y-%m-%d')
-        url = "https://api.football-data.org/v4/matches"
-        response = requests.get(url, headers=FD_HEADERS, params={"dateFrom": date_from, "dateTo": date_to})
-        response.raise_for_status()
-        matches = response.json().get('matches', [])
-        print(f"football-data.org a retourné {len(matches)} matchs.")
-
-        # 2. Si la source primaire échoue, utiliser le fallback
-        if not matches:
-            matches = fetch_from_api_football()
-
-    except requests.exceptions.RequestException as e:
-        print(f"Erreur avec football-data.org: {e}. Tentative de fallback.")
-        matches = fetch_from_api_football()
+    matches = fetch_matches_via_espn_api()
     
-    # --- Logique de prédiction et de tri (commune aux deux sources) ---
     all_predictions = []
     for match in matches:
         prediction = make_prediction(match)
