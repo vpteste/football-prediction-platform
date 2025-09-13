@@ -7,5 +7,5 @@ requests
 joblib
 APScheduler
 xgboost==2.0.3
-pytest==8.4.2
+pytest==8.2.2
 httpx==0.28.1
