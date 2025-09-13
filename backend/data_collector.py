@@ -4,38 +4,35 @@ import pandas as pd
 from dotenv import load_dotenv
 import time
 
-# Charger les variables d'environnement
+# --- Configuration ---
 load_dotenv()
 API_KEY = os.getenv("FOOTBALL_DATA_API_KEY")
 
-# Configuration
-COMPETITIONS = ['WC', 'CL', 'BL1', 'DED', 'BSA', 'PD', 'FL1', 'ELC', 'PPL', 'EC', 'SA', 'PL']
-SEASONS = [2022, 2023] # Saisons à récupérer
+# On cible une seule compétition susceptible d'être dans le plan gratuit
+COMPETITIONS = ['ELC'] 
+SEASONS = [2022]
 HEADERS = {"X-Auth-Token": API_KEY}
 OUTPUT_FILE = "historical_data.csv"
 
 def fetch_data():
-    """Récupère les données des saisons et compétitions spécifiées et les sauvegarde dans un fichier CSV."""
+    """Récupère les données pour une compétition et saison spécifiques."""
     if not API_KEY or API_KEY == "VOTRE_CLÉ_API_ICI":
-        print("Erreur: Clé API non trouvée. Vérifiez votre fichier .env")
+        print("Erreur: Clé API pour football-data.org non trouvée.")
         return
 
     all_matches = []
-
+    print(f"--- Récupération pour les compétitions: {COMPETITIONS} ---")
     for competition in COMPETITIONS:
-        print(f"\n--- Récupération pour la compétition: {competition} ---")
         for season in SEASONS:
             print(f"Saison {season}...")
             api_url = f"https://api.football-data.org/v4/competitions/{competition}/matches"
             params = {"season": season, "status": "FINISHED"}
-            
             try:
                 response = requests.get(api_url, headers=HEADERS, params=params)
                 response.raise_for_status()
                 data = response.json()
-
                 for match in data.get("matches", []):
-                    match_data = {
+                    all_matches.append({
                         "competition": competition,
                         "season": season,
                         "date": match["utcDate"],
@@ -43,20 +40,16 @@ def fetch_data():
                         "away_team": match["awayTeam"]["name"],
                         "home_goals": match["score"]["fullTime"]["home"],
                         "away_goals": match["score"]["fullTime"]["away"],
-                    }
-                    all_matches.append(match_data)
-                
-                print(f"  -> {len(data.get('matches', []))} matchs récupérés pour la saison {season}.")
-
+                    })
+                print(f"  -> {len(data.get('matches', []))} matchs récupérés.")
             except requests.exceptions.RequestException as e:
-                print(f"  -> Erreur lors de la récupération de la saison {season} pour {competition}: {e}")
+                print(f"  -> Erreur lors de la récupération: {e}")
                 continue
             finally:
-                # Pause de 6 secondes pour respecter la limite de 10 appels/minute de l'API
                 time.sleep(6)
 
     if not all_matches:
-        print("Aucune donnée n'a été récupérée. Arrêt du script.")
+        print("Aucune donnée n'a été récupérée. Arrêt.")
         return
 
     df = pd.DataFrame(all_matches)

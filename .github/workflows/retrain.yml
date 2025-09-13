@@ -1,0 +1,46 @@
+name: Automatic Model Retraining
+
+on:
+  workflow_dispatch: # Allows manual triggering
+  schedule:
+    - cron: '0 3 * * 0' # Runs every Sunday at 3:00 AM UTC
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+        working-directory: ./backend
+
+      - name: Run retraining script
+        env:
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+        run: |
+          chmod +x retrain.sh
+          ./retrain.sh
+        working-directory: ./backend
+
+      - name: Commit and push updated model and data
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add prediction_model.joblib model_columns.joblib historical_data.csv
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to the model or data to commit."
+          else
+            git commit -m "feat(model): Automatically retrain model and update data"
+            git push
+          fi
+        working-directory: ./backend

@@ -10,3 +10,60 @@ body {
   transform: translateY(-5px);
   box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
 }
+
+.prediction-card-horizontal {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 1rem;
+}
+
+.match-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #eee;
+}
+
+.competition-name {
+    font-weight: bold;
+    color: #555;
+}
+
+.match-date {
+    font-size: 0.9rem;
+    color: #777;
+}
+
+.teams-and-score {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.team-info {
+    flex: 1;
+    text-align: center;
+    font-size: 1.2rem;
+}
+
+.team-info.away {
+    text-align: right;
+}
+
+.score-prediction {
+    flex: 0 0 150px;
+    text-align: center;
+}
+
+.score {
+    font-size: 2rem;
+    font-weight: bold;
+}
+
+.prediction-outcome {
+    display: block;
+    font-size: 0.9rem;
+    color: #666;
+}
