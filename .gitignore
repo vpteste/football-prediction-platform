@@ -63,3 +63,4 @@ feature_cache.json
 # Other
 espn.html
 backend/daily_predictions.json
+\n# Log files\ntraining.log\ntraining.err

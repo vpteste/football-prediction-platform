@@ -56,3 +56,20 @@ L'objectif était d'importer toutes les données de ligues de football disponibl
 ## Résultat Final
 
 Nous avons construit une application web complète et fonctionnelle qui non seulement prédit l'issue des matchs mais aussi le score probable, tout en offrant une interface utilisateur interactive et enrichie visuellement. Le backend met à jour automatiquement les prédictions chaque jour. Le projet est maintenant doté d'une base de tests automatisés pour garantir sa qualité sur le long terme.
+
+### 7. Intégration des Données de Cotes (Bookmakers)
+
+- **Objectif :** Améliorer significativement la précision du modèle en ajoutant les cotes des bookmakers comme nouvelle caractéristique.
+- **Collecte de Données :**
+    - Création d'un script (`data_downloader.py`) pour télécharger 10 ans de données de matchs et de cotes pour les 5 principaux championnats européens depuis `football-data.co.uk`.
+    - Reconstruction d'une base de données de matchs propre et complète (`historical_data.csv`).
+- **Fusion des Données :**
+    - Création d'un script de fusion (`merge_odds.py`) pour joindre les données de cotes aux données de matchs.
+    - Résolution de problèmes complexes de correspondance de noms d'équipes et de dates entre les différentes sources de données.
+    - Le résultat est un jeu de données final de plus de 11 500 matchs enrichis avec des cotes.
+- **Nouvel Entraînement et Résultat :**
+    - Le script d'entraînement (`trainer.py`) a été mis à jour pour utiliser uniquement les données avec cotes et pour transformer ces cotes en probabilités implicites.
+    - Le nouveau modèle atteint une **précision de 59.35%**, soit un gain de plus de 12 points par rapport à la version précédente.
+- **Débogage de l'Environnement Local :**
+    - Résolution de nombreux problèmes liés à l'environnement de développement de l'utilisateur (Python 2.7 vs Python 3, `PATH`, environnements virtuels corrompus, permissions de fichiers, dépendances `npm`).
+    - Mise en place d'un workflow `git` complet avec un dépôt distant sur GitHub pour la synchronisation entre machines.
