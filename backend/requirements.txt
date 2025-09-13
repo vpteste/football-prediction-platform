@@ -6,6 +6,6 @@ python-dotenv
 requests
 joblib
 APScheduler
-xgboost==3.0.5
+xgboost==2.0.3
 pytest==8.4.2
 httpx==0.28.1
